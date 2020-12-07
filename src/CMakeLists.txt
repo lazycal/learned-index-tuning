@@ -33,8 +33,8 @@ set(SOURCE_FILES util.h competitors/rmi_universal.cpp)
 #     list(REMOVE_ITEM BENCH_SOURCES "${CMAKE_SOURCE_DIR}/benchmarks/benchmark_wormhole.cc")
 # endif ()
 
-add_executable(generate generate.cc ${SOURCE_FILES})
-target_link_libraries(generate Threads::Threads)
+add_executable(generate_queries generators/generate_queries.cc ${SOURCE_FILES})
+target_link_libraries(generate_queries Threads::Threads)
 
 add_executable(benchmark benchmark.cc ${SOURCE_FILES} ${RMI_SOURCES} ${BENCH_SOURCES})
 # target_include_directories(benchmark

@@ -19,31 +19,37 @@ public:
                                   const KeyType lookup_key) {
                                  return lhs.key < lookup_key;
                                });
-    if (it==data.end() || it->key!=lookup_key) {
-      std::cerr << "key " << lookup_key << " not found between "
-                << start << " and " << end << "\n";
+    // correction
+    // TODO: faster 
+    while (it->key < lookup_key && it < data.end()) ++it;
+    size_t x = it - data.begin();
+    while (x > 0 && data[x - 1].key >= lookup_key) --x;
+    return x;
+    // if (it==data.end() || it->key!=lookup_key) {
+    //   std::cerr << "key " << lookup_key << " not found between "
+    //             << start << " and " << end << "\n";
 
-      auto corr = std::lower_bound(data.begin(),
-                                   data.end(),
-                                   lookup_key,
-                                   [](const Row<KeyType>& lhs,
-                                      const KeyType lookup_key) {
-                                     return lhs.key < lookup_key;
-                                   });
-      std::cerr << "correct index: " << std::distance(data.begin(), corr) << "\n";
+    //   auto corr = std::lower_bound(data.begin(),
+    //                                data.end(),
+    //                                lookup_key,
+    //                                [](const Row<KeyType>& lhs,
+    //                                   const KeyType lookup_key) {
+    //                                  return lhs.key < lookup_key;
+    //                                });
+    //   std::cerr << "correct index: " << std::distance(data.begin(), corr) << "\n";
 
-      return 0;
-    }
+    //   return 0;
+    // }
   
-    // Sum over all values with that key.
-    uint64_t result = it->data[0];
-    ++(*num_qualifying);
+    // // Sum over all values with that key.
+    // uint64_t result = it->data[0];
+    // ++(*num_qualifying);
 
-    while (++it!=data.end() && it->key==lookup_key) {
-      result += it->data[0];
-      ++(*num_qualifying);
-    }
-    return result;
+    // while (++it!=data.end() && it->key==lookup_key) {
+    //   result += it->data[0];
+    //   ++(*num_qualifying);
+    // }
+    // return result;
   }
 
   std::string name() const {

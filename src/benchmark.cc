@@ -20,7 +20,7 @@ size_t num_repeats_;
 std::vector<uint64_t> runs_;
 uint64_t random_sum, individual_ns_sum, build_ns_;
 
-bool CheckResults(uint64_t actual, uint64_t expected,
+inline bool CheckResults(uint64_t actual, uint64_t expected,
                   KeyType lookup_key, SearchBound bound) {
   if (actual!=expected) {
     // const auto pos = std::find_if(
