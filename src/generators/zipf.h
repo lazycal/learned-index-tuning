@@ -1,109 +1,138 @@
-// adapted from https://github.com/NYU-NEWS/janus/blob/58b9146d8e6814455ac52719984be8a32b97a69f/src/bench/tpca/zipf.h
+// from Changgeng
+#pragma once
 
-#include "../util.h"
-#include <vector>
-using std::vector;
-#define verify assert
+#include <pthread.h>
 
-class ZipfDist {
- public:
-  struct probvals {
-    double prob;
-    /* the access probability */
-    double cum_prob;              /* the cumulative access probability */
-  };
-  vector<probvals> zdist = {};
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <random>
+#include <string>
+#include <unordered_set>
 
-  void get_zipf(double alpha, int N) {
-    double sum = 0.0;
-    double c = 0.0;
-    double sumc = 0.0;
-    int i;
+/**********************************************************************
+ * zipf distribution
+ *********************************************************************/
 
-    /*
-     * pmf: f(x) = 1 / (x^alpha) * sum_1_to_n( (1/i)^alpha )
-     */
+int64_t FNV_OFFSET_BASIS_64 = 0xCBF29CE484222325;
+int64_t FNV_PRIME_64 = 1099511628211;
 
-    for (i = 1; i <= N; i++) {
-      sum += 1.0 / (double) pow((double) i, (double) (alpha));
-
-    }
-    c = 1.0 / sum;
-
-    for (i = 0; i < N; i++) {
-      zdist[i].prob = c /
-          (double) pow((double) (i + 1), (double) (alpha));
-      sumc += zdist[i].prob;
-      zdist[i].cum_prob = sumc;
-    }
-    zdist[N-1].cum_prob = 1.0;
-  }
-
-  ZipfDist(double alpha, int N) {
-
-    if (N <= 0 || alpha < 0.0 || alpha > 1.0) {
-      util::fail("wrong arguments for zipf");
+class ZipfianGenerator {
+   public:
+    ZipfianGenerator(uint64_t min, uint64_t max)
+        : items(max - min + 1),
+          base(min),
+          zipfianconstant(0.99),
+          theta(0.99),
+          dis(0, 1) {
+        zetan = zeta(0, max - min + 1, zipfianconstant, 0);
+        zeta2theta = zeta(0, 2, theta, 0);
+        alpha = 1.0 / (1.0 - theta);
+        eta = (1 - pow(2.0 / items, 1 - theta)) / (1 - zeta2theta / zetan);
+        countforzeta = items;
+        // nextValue();
     }
 
-    zdist.resize(N);
-    get_zipf(alpha, N);          /* generate the distribution */
-  }
-
-  template<class RNG> // =std::mt19937>
-  int operator() (RNG& rand_gen) {
-//    for (int i = 0; i < zdist.size()-1; i++) {
-//      auto& z1 = zdist[i];
-//      auto& z2 = zdist[i+1];
-//      verify(z1.cum_prob < z2.cum_prob);
-//    }
-    auto x = rand_gen();
-    double xx = (x - rand_gen.min()) /
-        (double)(rand_gen.max() - rand_gen.min());
-    verify(xx >= 0 && xx <= 1);
-    int start_search = 0;
-    int end_search = zdist.size() - 1;
-    verify(end_search >= start_search);
-    int middle = 0;
-    while (start_search <= end_search) {
-      // auto& zz_start = zdist[start_search];
-      auto& zz_end = zdist[end_search];
-//      double d99997 = zdist[99998].cum_prob;
-//      double d99998 = zdist[99998].cum_prob;
-//      double d99999 = zdist[99999].cum_prob;
-      verify(zz_end.cum_prob >= xx);
-
-      if (start_search == end_search) {
-        verify(zdist[start_search].cum_prob >= xx);
-        return start_search;
-      }
-      middle = (start_search + end_search) / 2;
-//      if (middle == start_search) {
-//        auto& z = zdist[middle];
-////        verify(z.cum_prob);
-//        if (middle > 0) {
-//          verify(zdist[middle-1].cum_prob <= xx);
-//        }
-//        return middle;
-//      }
-      verify(middle >= start_search);
-      verify(middle <= end_search);
-      if (middle == 0) {
-        return middle;
-      }
-      verify(middle > 0);
-      auto& z = zdist[middle-1];
-      auto& zz = zdist[middle];
-      if (xx > z.cum_prob && xx <= zz.cum_prob) {
-        return middle;
-      } else if (xx < zz.cum_prob) {
-        end_search = middle - 1;
-      } else if (xx > zz.cum_prob) {
-        start_search = middle + 1;
-      } else {
-        verify(0);
-      }
+    ZipfianGenerator(uint64_t min, uint64_t max, double thet)
+        : items(max - min + 1),
+          base(min),
+          zipfianconstant(thet),
+          theta(thet),
+          dis(0, 1) {
+        zetan = zeta(0, max - min + 1, zipfianconstant, 0);
+        zeta2theta = zeta(0, 2, theta, 0);
+        alpha = 1.0 / (1.0 - theta);
+        eta = (1 - pow(2.0 / items, 1 - theta)) / (1 - zeta2theta / zetan);
+        countforzeta = items;
+        // nextValue();
     }
-    verify(0);
-  }
+
+    ZipfianGenerator(uint64_t min, uint64_t max, double thet, double zet)
+        : items(max - min + 1),
+          base(min),
+          zipfianconstant(thet),
+          theta(thet),
+          zetan(zet),
+          dis(0, 1) {
+        zeta2theta = zeta(0, 2, theta, 0);
+        alpha = 1.0 / (1.0 - theta);
+        eta = (1 - pow(2.0 / items, 1 - theta)) / (1 - zeta2theta / zetan);
+        countforzeta = items;
+        // nextValue();
+    }
+
+    ~ZipfianGenerator() { }
+
+    inline double zeta(uint64_t st, uint64_t n, double theta, double initialsum) {
+        countforzeta = n;
+        double sum = initialsum;
+        if (n - st > 1000'000'000) {
+          std::cerr << "n-st=" << n-st << " is too large. Please consider precomputing."
+            << std::endl;
+          std::exit(1);
+        }
+        std::cout << "computing zeta(st=" << st << ", n=" << n << ", theta=" << theta
+          << ", initialsum=" << initialsum << std::endl;
+        for (size_t i = st; i < n; i++) {
+            sum += 1 / (pow(i + 1, theta));
+        }
+        std::cout << "zeta=" << sum << std::endl;
+        return sum;
+    }
+
+    template<class Generator>
+    inline uint64_t nextValue(Generator &gen) {
+        // from "Quickly Generating Billion-Record Synthetic Databases", Jim Gray
+        // et al, SIGMOD 1994
+        double u = dis(gen);
+        double uz = u * zetan;
+        if (uz < 1.0)
+            return base;
+        if (uz < 1.0 + pow(0.5, theta))
+            return base + 1;
+        uint64_t ret = base + (uint64_t)(items * pow(eta * u - eta + 1, alpha));
+        return ret;
+    }
+
+    template<class Generator>
+    uint64_t nextHashed(Generator &gen) {
+        uint64_t ret = nextValue(gen);
+        ret = base + fnvhash64(ret) % items;
+        // LOG(2) << ret;
+        return ret;
+    }
+
+    uint64_t fnvhash64(uint64_t val) {
+        // from http://en.wikipedia.org/wiki/Fowler_Noll_Vo_hash
+        uint64_t hashval = FNV_OFFSET_BASIS_64;
+        for (size_t i = 0; i < 8; i++) {
+            uint64_t octet = val & 0x00ff;
+            val = val >> 8;
+            hashval = hashval ^ octet;
+            hashval = hashval * FNV_PRIME_64;
+        }
+        return hashval;
+    }
+   private:
+    // Number of items.
+    uint64_t items;
+    // Min item to generate.
+    uint64_t base;
+    uint64_t countforzeta;
+    // The zipfian constant to use.
+    double zipfianconstant;
+    // Computed parameters for generating the distribution.
+    double theta, zetan, zeta2theta, alpha, eta;
+    // std::random_device rd;
+    // std::mt19937 gen;
+    std::uniform_real_distribution<> dis;
+    // constexpr static double ZETAN = 26.46902820178302;
+    // constexpr static uint64_t ITEM_COUNT = 10'000'000'000ull;
 };
-#undef verify
+
+
+
