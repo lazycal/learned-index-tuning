@@ -7,6 +7,7 @@
 
 using namespace std;
 const int SEED = 97;
+const double TRAIN_RATIO=0.7;
 template<class KeyType>
 vector<LBLookup<KeyType>> draw_n(const vector<KeyType> &keys, bool in_index,
  string dist_name, double alpha, size_t num_lookups)
@@ -44,15 +45,14 @@ vector<LBLookup<KeyType>> draw_n(const vector<KeyType> &keys, bool in_index,
       res[i] = {key, lb};
     }
   } else if (in_index && dist_name == "zipf") {
-    assert(false); // TODO
-    // std::mt19937 gen(SEED);
-    // ZipfDist distrib(alpha, keys.size());
-    // for (size_t i = 0; i < num_lookups; ++i) {
-    //   uint64_t key = keys[distrib(gen)];
-    //   uint64_t lb = std::lower_bound(keys.begin(), keys.end(), key) - keys.begin();
-    //   res[i] = {key, lb};
-    // }
-    // break;
+    vector<KeyType> unique_keys = util::remove_duplicates(keys);
+    std::mt19937 gen(SEED);
+    ZipfianGenerator distrib(0, unique_keys.size() - 1, alpha);
+    for (size_t i = 0; i < num_lookups; ++i) {
+      uint64_t key = keys[distrib.nextHashed(gen)];
+      uint64_t lb = std::lower_bound(keys.begin(), keys.end(), key) - keys.begin();
+      res[i] = {key, lb};
+    }
   } else if (!in_index && dist_name == "uniform") {
     std::mt19937_64 gen(SEED);
     std::uniform_int_distribution<uint64_t> distrib(min_key, max_key);
@@ -62,7 +62,13 @@ vector<LBLookup<KeyType>> draw_n(const vector<KeyType> &keys, bool in_index,
       res[i] = {key, lb};
     }
   } else if (!in_index && dist_name == "zipf") {
-    assert(false);
+    std::mt19937 gen(SEED);
+    ZipfianGenerator distrib(min_key, max_key, alpha);
+    for (size_t i = 0; i < num_lookups; ++i) {
+      uint64_t key = distrib.nextHashed(gen);
+      uint64_t lb = std::lower_bound(keys.begin(), keys.end(), key) - keys.begin();
+      res[i] = {key, lb};
+    }
   } else {
     cerr << "Unrecognized argument!" << endl;
     assert(false);
@@ -104,6 +110,10 @@ int main(int argc, char* argv[]) {
       // Generate benchmarks.
       auto lookups = draw_n(keys, in_index, dist_name, alpha, num_lookups);
       util::write_data(lookups, output_path);
+      size_t n_train = lookups.size() * TRAIN_RATIO;
+      cout << "num train=" << n_train << ", num test=" << lookups.size() - n_train << endl;
+      util::write_data(decltype(lookups)(lookups.begin(), lookups.begin() + n_train), output_path+"_train");
+      util::write_data(decltype(lookups)(lookups.begin() + n_train, lookups.end()), output_path+"_test");
       break;
     }
   }
