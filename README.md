@@ -26,7 +26,7 @@ To benchmark all the baselines:
 bash ./scripts/benchmark_baseline.sh
 ```
 
-Result will be saved to `run/result/` with each line of format as follows:
+Each baseline will be run 5 times on each query workload. Result will be saved to `run/result/` with each line of format as follows:
 
 ```
 <model_name>,<variant_id>,<run_time_1>,<run_time_2>,<run_time_3>,<run_time_4>,<run_time_5>,<model_size>,<build_time>,<last_mile_searcher>,<workload>
