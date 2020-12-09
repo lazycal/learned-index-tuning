@@ -61,3 +61,6 @@ Temporary Items
 
 /local
 *.bak
+/data
+/rmi_data
+/run

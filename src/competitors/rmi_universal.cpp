@@ -80,7 +80,7 @@ uint64_t lookup(uint64_t key, size_t* err) {
   size_t modelIndex;
   double fpred;
   fpred = cubic(L0_PARAMETER0, L0_PARAMETER1, L0_PARAMETER2, L0_PARAMETER3, (double)key);
-  modelIndex = std::min((uint64_t) std::max(0., fpred), L1_NUM_MODELS - 1);
+  modelIndex = std::min((size_t) std::max(0., fpred), L1_NUM_MODELS - 1);
   fpred = linear(*((double*) (L1_PARAMETERS + (modelIndex * 24) + 0)), *((double*) (L1_PARAMETERS + (modelIndex * 24) + 8)), (double)key);
   *err = *((uint64_t*) (L1_PARAMETERS + (modelIndex * 24) + 16));
 
