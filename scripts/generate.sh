@@ -20,6 +20,7 @@ function generate_lookups() {
   done
 }
 
+python ./src/generators/gen_uniform.py --many
 generate_lookups uniform_dense_200M_uint64
 # generate_lookups osm_cellids_200M_uint64
 generate_lookups wiki_ts_200M_uint64
