@@ -11,8 +11,8 @@ assert os.path.exists(db_dataset), db_dataset
 # query="../data/{dataset}_queries_10M_in"
 for query in tqdm(sorted(glob.glob(db_dataset+"_*_test"))):
     query_name = os.path.basename(query)
-    for i in range(3, 7):
-        cmd=f"./build/benchmark {db_dataset} {query} 5 rmi ./rmi_data/baseline/{dataset}_{i}_PARAMETERS"
+    for size_scale in [1, 4, 16, 32, 64, 128, 512, 1024]:
+        cmd=f"./build/benchmark {db_dataset} {query} 5 btree {size_scale}"
         print("====>running ", cmd, file=sys.stderr)
         outs, errs = Popen(cmd, shell=True, stdout=PIPE, universal_newlines=True).communicate()
         outs = outs.strip().split('\n')[-1]

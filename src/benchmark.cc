@@ -2,6 +2,7 @@
 #include "searches/branching_binary_search.h"
 #include "competitors/rmi_search.h"
 #include "competitors/rmi_universal.h"
+#include "competitors/stx_btree.h"
 
 #include <immintrin.h>
 #include <sstream>
@@ -190,10 +191,10 @@ void Run() {
 }
 
 void init(std::string data_filename, std::string lookups_filename,
-  std::string prebuild_filename)
+  std::string prebuild_filename, int num_repeats)
 {
   cold_cache = false;
-  num_repeats_ = 1;
+  num_repeats_ = num_repeats;
   data_filename_ = data_filename;
   lookups_filename_ = lookups_filename;
   prebuild_filename_ = prebuild_filename;
@@ -222,11 +223,21 @@ void init(std::string data_filename, std::string lookups_filename,
 
 int main(int argc, char* argv[])
 {
-  // usage: main <data_path> <lookups_path> [<prebuild_path>]
+  util::set_cpu_affinity(0);
+  // usage: main <data_path> <query_path> <num_repeats> <model_type: rmi|btree> <prebuild_path (for rmi) | size_scale (for btree)>
   auto data_filename_ = argv[1];
   auto lookups_filename_ = argv[2];
-  auto prebuild_filename = "";
-  if (argc > 3) prebuild_filename = argv[3];
-  init(data_filename_, lookups_filename_, prebuild_filename);
-  Run<RMI<uint64_t, rmi_universal::lookup, rmi_universal::load, rmi_universal::cleanup>>();
+  auto num_repeats = std::stoi(argv[3]);
+  std::string model_type = argv[4];
+  auto prebuild_filename = argv[5];
+  init(data_filename_, lookups_filename_, prebuild_filename, num_repeats);
+  if (model_type == "rmi") {
+    std::cout << "running rmi" << std::endl;
+    Run<RMI<KeyType, rmi_universal::lookup, rmi_universal::load, rmi_universal::cleanup>>();
+  } else if (model_type == "btree") {
+    std::cout << "running btree" << std::endl;
+    Run<STXBTree<KeyType>>();
+  } else {
+    util::fail("model_type `"+model_type+"` not understood. Possible options are `rmi`, `btree`.");
+  }
 }

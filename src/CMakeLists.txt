@@ -37,13 +37,13 @@ add_executable(generate_queries generators/generate_queries.cc ${SOURCE_FILES})
 target_link_libraries(generate_queries Threads::Threads)
 
 add_executable(benchmark benchmark.cc ${SOURCE_FILES} ${RMI_SOURCES} ${BENCH_SOURCES})
-# target_include_directories(benchmark
-#        PRIVATE "competitors/stx-btree-0.9/include"
+target_include_directories(benchmark
+        PRIVATE "../external/stx-btree-0.9/include"
 #        PRIVATE "competitors/FST/include"
 #        PRIVATE "competitors/PGM-index/include"
 #        PRIVATE "competitors/rs/include"
 #        PRIVATE "fast64"
-# )
+)
 
 target_link_libraries(benchmark
         PRIVATE Threads::Threads
