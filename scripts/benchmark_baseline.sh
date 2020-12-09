@@ -9,8 +9,8 @@ function benchmark() {
   dataset=$3
   out=./run/result/result_$2_${dataset}.txt
   [ -f ${out} ] || (
-    python -u $1 ${dataset} | tee ./run/tmp.txt
-    mv ./run/tmp.txt ${out}
+    python -u $1 ${dataset} | tee ./run/result/tmp.txt
+    mv ./run/result/tmp.txt ${out}
   )
 }
 [ ! -f ./data/uniform_dense_200M_uint64 ] || benchmark ./scripts/benchmark_stxbtree.py stxbtree uniform_dense_200M_uint64
