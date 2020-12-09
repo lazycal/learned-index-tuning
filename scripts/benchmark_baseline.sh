@@ -3,7 +3,7 @@ cd build
 cmake -DCMAKE_BUILD_TYPE=Release .. && make -j8
 cd .. 
 
-mkdir -p run
+mkdir -p run/result
 function benchmark() {
 
   dataset=$3
