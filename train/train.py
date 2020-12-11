@@ -58,6 +58,9 @@ def L2_loss(output, target):
     loss = torch.mean((output - target)**2)
     return loss
 
+def MaxLoss(output, target):
+    return torch.max(torch.abs(output - target))
+
 def transform(a):
     '''perform some form of standardization'''
     a = np.array(a)
@@ -146,54 +149,64 @@ def seed_all(seed, deterministic_but_slow):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
 
-seed_all(7, True)
-x           = np.arange(1000, dtype=np.float) # np.random.normal(0, 1, 1000)
-y           = np.array([sum(x<inp) for inp in x]) #np.random.normal(0, 1, 1000)
-max_epoch1  = 1000
-max_epoch2  = 100
-num_module1 = 1
-num_module2 = 1000
-num_data1   = len(x)
-output_x1   = []
-cubic_list  = []
-data2       = []
-err1        = []
-datax       = x # 1st layer data
-datay       = y # 1st layer label
-datay       = (datay - min(datay)) * 1. / (sum(datay==max(datay)) + max(datay) - min(datay)) * num_module2 #scale
-device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-log_freq    = -1
+def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
+    criterion_train=L2_loss):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    linear_list = []
+    errs = np.zeros(num_module2)
+    # distibute data into 2nd layer
+    with torch.no_grad():
+        model_index = top_model(torch.tensor(x).to(device)).detach().cpu().numpy()
+    print('model_index.shape=',model_index.shape)
+    data2_x = [[] for _ in range(num_module2)]
+    data2_y = [[] for _ in range(num_module2)]
+    for i in range(len(model_index)):
+        mi = max(0, min(num_module2 - 1, int(model_index[i])))
+        data2_x[mi].append(x[i])
+        data2_y[mi].append(y[i])
 
-# train 1st layer
-# TODO: should use Cubic
-cubic_model = Linear().to(device)#Cubic().to(device)
-train_model(cubic_model, datax, datay, max_epoch1, log_freq=log_freq)
-# cubic_list.append(cubic_model)
+    print('num_data for each layer-2 model', list(map(len, data2_x)))
+    for i in tqdm.tqdm(range(num_module2)):
+        print(f'traing #{i}')
+        if len(data2_x[i]) == 0: continue # skip
+        linear_model = Linear().to(device)
+        train_model(linear_model, data2_x[i], data2_y[i], max_epoch2, 
+            log_freq=log_freq, criterion=criterion_train)
+        linear_list.append(linear_model)
+        max_err = eval_model(linear_model, data2_x[i], data2_y[i], MaxLoss)
+        errs[i] = max_err
+        print("max error={}".format(max_err))
 
-# distibute data into 2nd layer
-model_index = cubic_model(torch.tensor(datax).to(device)).detach().cpu().numpy()
-print('model_index.shape=',model_index.shape)
-data2_x = [[] for _ in range(num_module2)]
-data2_y = [[] for _ in range(num_module2)]
-for i in range(len(model_index)):
-    mi = max(0, min(num_module2 - 1, int(model_index[i])))
-    data2_x[mi].append(x[i])
-    data2_y[mi].append(y[i])
+    # TODO: constant empty models
+    #   TODO: calculate max error
+    #     data_len = num - record
+    #     for jj in range(data_len):
+    #         index         = record + jj
+    #         output_linear = linear_model(data2[index][0])
+    #         output_x2.append(max(min(num_module2-1, output_linear.item()),0))
 
-# train 2nd layer
-linear_list  = []
-print('num_data for each layer-2 model', list(map(len, data2_x)))
-for i in tqdm.tqdm(range(num_module2)):
-    print(f'traing #{i}')
-    if len(data2_x[i]) == 0: continue # skip
-    linear_model = Linear().to(device)
-    train_model(linear_model, data2_x[i], data2_y[i], max_epoch2, log_freq=log_freq)
-    linear_list.append(linear_model)
+    return linear_list, data2_x, data2_y, errs
 
-# TODO: constant empty models
-#   TODO: calculate max error
-#     data_len = num - record
-#     for jj in range(data_len):
-#         index         = record + jj
-#         output_linear = linear_model(data2[index][0])
-#         output_x2.append(max(min(num_module2-1, output_linear.item()),0))
+def main():
+    seed_all(7, True)
+    x           = np.arange(1000, dtype=np.float) # np.random.normal(0, 1, 1000)
+    y           = np.array([sum(x<inp) for inp in x]) #np.random.normal(0, 1, 1000)
+    max_epoch1  = 1000
+    # max_epoch2  = 100
+    num_module2 = 1000
+    datax       = x # 1st layer data
+    datay       = y # 1st layer label
+    datay       = (datay - min(datay)) * 1. / (sum(datay==max(datay)) + max(datay) - min(datay)) * num_module2 #scale
+    device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    log_freq    = -1
+
+    # train 1st layer
+    # TODO: should use Cubic
+    cubic_model = Linear().to(device)#Cubic().to(device)
+    train_model(cubic_model, datax, datay, max_epoch1, log_freq=log_freq)
+    linear_list, data2_x, data2_y, errs = train_L2(cubic_model, x, y, num_module2,
+        log_freq=log_freq)
+    wts = np.array(list(map(len, data2_x)))
+    print("mean error=", np.array(errs) * wts / wts.sum())
+if __name__ == "__main__":
+    main()
