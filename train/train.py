@@ -207,6 +207,6 @@ def main():
     linear_list, data2_x, data2_y, errs = train_L2(cubic_model, x, y, num_module2,
         log_freq=log_freq)
     wts = np.array(list(map(len, data2_x)))
-    print("mean error=", np.array(errs) * wts / wts.sum())
+    print("mean error=", sum(np.array(errs) * wts) / wts.sum())
 if __name__ == "__main__":
     main()
