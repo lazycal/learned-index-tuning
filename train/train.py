@@ -230,13 +230,20 @@ def set_empty_const(empty_num, linear_list, data2_x, num_module2):
     left_index  = []
     const       = []
     if len(empty_num) == 1:
-        right_index = empty_num[0] + 1
-        left_index  = empty_num[0] - 1
-        right_model = linear_list(right_index)
-        right_val   = right_model.forward(data2_x[right_index][-1])
-        left_model  = linear_list(left_index)
-        left_val    = left_model.forward(data2_x[left_index][0])
-        const.append(0.5 * (right_val + left_val))
+        if empty_num[0] == 0:
+            right_index = empty_num[0] + 1
+            right_val   = sorted(data2_y[right_index])[0]
+            const.append(right_val)
+        elif empty_num[0] == num_module2 - 1:
+            left_index  = empty_num[0] - 1
+            left_val    = sorted(data2_y[left_index])[-1]
+            const.append(left_val)
+        else:
+            right_index = empty_num[0] + 1
+            left_index  = empty_num[0] - 1
+            right_val   = sorted(data2_y[right_index])[0]
+            left_val    = sorted(data2_y[left_index])[-1]
+            const.append(0.5 * (right_val + left_val))
     else:
         for i in range(len(empty_num)):
 
@@ -273,10 +280,10 @@ def set_empty_const(empty_num, linear_list, data2_x, num_module2):
                         left_index.append(empty_num[i-l] - 1)
                         signal_left = 0
                         break
-                
+
                 if signal_left == -2:
                     left_index.append(-1)
-            
+
             # Usual Case
             else:
 
@@ -294,27 +301,23 @@ def set_empty_const(empty_num, linear_list, data2_x, num_module2):
                         left_index.append(empty_num[i-l] - 1)
                         signal_left = 0
                         break
-                        
+
                 if signal_right == -2:
                     right_index.append(-1)
                 if signal_left == -2:
                     left_index.append(-1)
 
             if signal_right  == -2:
-                left_model  = linear_list[left_index[i]]
-                left_val    = left_model.forward(data2_x[left_index[i]][0])
-                const.append(left_val.item())
+                left_val    = sorted(data2_y[left_index[i]])[-1]
+                const.append(left_val)
             elif signal_left == -2:
-                right_model = linear_list[right_index[i]]
-                right_val   = right_model.forward(data2_x[right_index[i]][-1])
-                const.append(right_val.item())
+                right_val   = sorted(data2_y[right_index[i]])[0]
+                const.append(right_val)
             else:
-                right_model = linear_list[right_index[i]]
-                right_val   = right_model.forward(data2_x[right_index[i]][-1])
-                left_model  = linear_list[left_index[i]]
-                left_val    = left_model.forward(data2_x[left_index[i]][0])
+                right_val   = sorted(data2_y[right_index[i]])[0]
+                left_val    = sorted(data2_y[left_index[i]])[-1]
                 const.append(0.5 * (right_val.item() + left_val.item()))
-            
+
             linear_list[empty_num[i]].b = nn.Parameter(torch.tensor(const[i], dtype=torch.float64, requires_grad=True))
 
 
