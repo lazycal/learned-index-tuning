@@ -144,6 +144,7 @@ def train_model(model: nn.Module, x, y,
     # now transform model back: compute model' s.t. (model'(x_ori)-y_shift)/y_scale = model(x), 
     # where x is the transformed x_ori, i.e. x=(x_ori-x_shift)/x_scale
     model.transform_back(x_shift, x_scale, y_shift, y_scale)
+    print(y_scale)
 
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
@@ -160,9 +161,14 @@ def seed_all(seed, deterministic_but_slow):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
 
+def MaxLoss(output, target):    
+    return torch.max(torch.abs(output - target))
+        
 seed_all(7, True)
-x           = np.arange(1000, dtype=np.float) # np.random.normal(0, 1, 1000)
-y           = np.array([sum(x<inp) for inp in x]) #np.random.normal(0, 1, 1000)
+#x           = np.arange(1000, dtype=np.float) # np.random.normal(0, 1, 1000)
+#y           = np.array([sum(x<inp) for inp in x]) #np.random.normal(0, 1, 1000)
+x           = x.astype(np.float64)
+y           = y.astype(np.float64)
 max_epoch1  = 1000
 max_epoch2  = 100
 num_module1 = 1
@@ -172,8 +178,8 @@ output_x1   = []
 cubic_list  = []
 data2       = []
 err1        = []
-datax       = x # 1st layer data
-datay       = y # 1st layer label
+datax       = x.astype(np.float64)#x # 1st layer data
+datay       = y.astype(np.float64)#y # 1st layer label
 datay       = (datay - min(datay)) * 1. / (sum(datay==max(datay)) + max(datay) - min(datay)) * num_module2 #scale
 device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 log_freq    = -1
@@ -181,13 +187,11 @@ log_freq    = -1
 # train 1st layer
 # TODO: should use Cubic
 cubic_list  = []
-print('num_data for each layer-1 model', list(map(len, datax)))
-for i in tqdm.tqdm(range(num_module1)):
-    print(f'traing #{i}')
-    if len(datax[i]) == 0: continue # skip
-    cubic_model = Cubic().to(device)
-    train_model(cubic_model, datax[i], datay[i], max_epoch1, log_freq=log_freq)
-    cubic_list.append(cubic_model)
+print('num_data for each layer-1 model', len(datax))
+print(f'traing #{0}')
+cubic_model = Cubic().to(device)
+train_model(cubic_model, datax, datay, max_epoch1, log_freq=log_freq)
+cubic_list.append(cubic_model)
 #cubic_model = Linear().to(device)#Cubic().to(device)
 #train_model(cubic_model, datax, datay, max_epoch1, log_freq=log_freq)
 #cubic_list.append(cubic_model)
@@ -209,69 +213,16 @@ empty_num    = []
 print('num_data for each layer-2 model', list(map(len, data2_x)))
 for i in tqdm.tqdm(range(num_module2)):
     print(f'traing #{i}')
+    linear_model = Linear().to(device)
     if len(data2_x[i]) == 0: 
         empty_num.append(i)
+        linear_list.append(linear_model)
         continue # skip
-    linear_model = Linear().to(device)
     train_model(linear_model, data2_x[i], data2_y[i], max_epoch2, log_freq=log_freq)
     linear_list.append(linear_model)
-
-# Empty set
-right_index = []
-left_index  = []
-const       = []
-for i in range(len(empty_num)):
-    if empty_num(i) == 0:
-        left_index.append(-1)
-    elif empty_num(i) == num_module2 - 1:
-        right_index.append(-1)
-    else:
-        
-        # Find the index of the first non-empty set at the left of the set whose index is empty_num(i)
-        for k in range(i+1,len(empty_num)):
-            if empty_num(k) != empty_num(k-1) + 1:
-                left_index.append(empty_num(k-1) + 1)
-                break
-                
-        # Find the index of the first non-empty set at the right of the set whose index is empty_num(i)
-        for l in range(i):
-            if empty_num(i-1-l) != empty_num(i-l) - 1:
-                right_index.append(empty_num(i-l) - 1) 
-                break
-    
-    if right_index[i] == -1:
-        left_model  = linear_list(left_index[i])
-        left_val    = left_model.forward(data2_x[left_index[i]][0])
-        const.append(left_val)
-    elif left_index[i] == -1:
-        right_model = linear_list(right_index[i])
-        right_val   = right_model.forward(data2_x[right_index[i]][-1])
-        const.append(right_val)
-    else:
-        right_model = linear_list(right_index[i])
-        right_val   = right_model.forward(data2_x[right_index[i]][-1])
-        left_model  = linear_list(left_index[i])
-        left_val    = left_model.forward(data2_x[left_index[i]][0])
-        const.append(0.5 * (right_val + left_val))
         
     
 #   TODO: calculate max error
-# The Cubic model
-num_cubic = len(cubic_list)
-err1      = []
-for i in range(num_cubic):
-    data_loss_x = []
-    data_loss_y = []
-    data_loss_x = datax[i]
-    data_loss_y = datay[i]
-    cubic_mol   = cubic_list[i]
-    cubic_loss  = cubic_mol.forward(data_loss_x[0]) - data_loss_y[0]
-    for ii in range(1,len(data_loss_x)):
-            new_cubic_loss = cubic_mol.forward(data_loss_x[ii]) - data_loss_y[ii]
-            if np.abs(new_cubic_loss.item()) > np.abs(cubic_loss.item()):
-                cubic_loss = new_cubic_loss
-    err1.append(cubic_loss.item())
-    
 # The Linear model
 num_linear = len(linear_list)
 err2       = []
@@ -283,12 +234,104 @@ for i in range(num_linear):
     
     # Special case: the empty dataset
     if len(data_loss_x) == 0:
-        err2.append(float("inf"))
-        break
+        #err2.append(float("inf"))
+        err2.append(0)
+        continue
     linear_mol  = linear_list[i]
     linear_loss = linear_mol.forward(data_loss_x[0]) - data_loss_y[0]
-    for ii in range(1,len(data_loss_x)):
-            new_linear_loss = linear_mol.forward(data_loss_x[ii]) - data_loss_y[ii]
-            if np.abs(new_linear_loss.item()) > np.abs(linear_loss.item()):
-                linear_loss = new_linear_loss
-    err2.append(linear_loss.item())
+    max_err     = eval_model(linear_model, data_loss_x, data_loss_y, MaxLoss)
+    err2.append(max_err)
+    
+print(err2)
+
+# Empty set
+right_index = []
+left_index  = []
+const       = []
+if len(empty_num) == 1:
+    right_index = empty_num[0] + 1
+    left_index  = empty_num[0] - 1
+    right_model = linear_list(right_index)
+    right_val   = right_model.forward(data2_x[right_index][-1])
+    left_model  = linear_list(left_index)
+    left_val    = left_model.forward(data2_x[left_index][0])
+    const.append(0.5 * (right_val + left_val))
+else:
+    for i in range(len(empty_num)):
+
+        signal_left  = -2
+        signal_right = -2
+
+        # Special Case: the first element
+        if i == 0:
+            if empty_num[i] == 0:
+                left_index.append(-1)
+            else:
+                left_index.append(empty_num[i]-1)
+                signal_left = 0
+
+            # Find the index of the first non-empty set at the left of the set whose index is empty_num(i)
+            for k in range(i+1,len(empty_num)):
+                if empty_num[k] != empty_num[k-1] + 1:
+                    right_index.append(empty_num[k-1]+ 1)
+                    signal_right = 0
+                    break
+            if signal_right == -2:
+                right_index.append(-1)
+
+        # Special Case: the last element
+        elif i == len(empty_num)-1:
+            if empty_num[i] == num_module2 - 1:
+                right_index.append(-1)
+            else:
+                right_index.append(empty_num[i]+1)
+                signal_right = 0
+
+            for l in range(i):
+                if empty_num[i-1-l] != empty_num[i-l] - 1:
+                    left_index.append(empty_num[i-l] - 1)
+                    signal_left = 0
+                    break
+            
+            if signal_left == -2:
+                left_index.append(-1)
+        
+        # Usual Case
+        else:
+
+
+            # Find the index of the first non-empty set at the left of the set whose index is empty_num(i)
+            for k in range(i+1,len(empty_num)):
+                if empty_num[k] != empty_num[k-1] + 1:
+                    right_index.append(empty_num[k-1]+ 1)
+                    signal_right = 0
+                    break
+
+            # Find the index of the first non-empty set at the right of the set whose index is empty_num(i)
+            for l in range(i):
+                if empty_num[i-1-l] != empty_num[i-l] - 1:
+                    left_index.append(empty_num[i-l] - 1)
+                    signal_left = 0
+                    break
+                    
+            if signal_right == -2:
+                right_index.append(-1)
+            if signal_left == -2:
+                left_index.append(-1)
+
+        if signal_right  == -2:
+            left_model  = linear_list[left_index[i]]
+            left_val    = left_model.forward(data2_x[left_index[i]][0])
+            const.append(left_val.item())
+        elif signal_left == -2:
+            right_model = linear_list[right_index[i]]
+            right_val   = right_model.forward(data2_x[right_index[i]][-1])
+            const.append(right_val.item())
+        else:
+            right_model = linear_list[right_index[i]]
+            right_val   = right_model.forward(data2_x[right_index[i]][-1])
+            left_model  = linear_list[left_index[i]]
+            left_val    = left_model.forward(data2_x[left_index[i]][0])
+            const.append(0.5 * (right_val.item() + left_val.item()))
+        
+        linear_list[empty_num[i]].b = nn.Parameter(torch.tensor(const[i], dtype=torch.float64, requires_grad=True))
