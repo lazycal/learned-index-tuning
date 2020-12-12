@@ -18,6 +18,7 @@ std::string extract_variant(std::string rmi_path)
   std::string underscore = "_";
   auto lpos = std::find_end(rmi_path.begin(), rmi_path.end(), underscore.begin(), underscore.end());
   auto l2pos = std::find_end(rmi_path.begin(), lpos, underscore.begin(), underscore.end());
+  if (lpos == rmi_path.end() || l2pos == rmi_path.end()) return "unknown";
   return std::string(l2pos + 1, lpos);
 }
 // RMI with binary search

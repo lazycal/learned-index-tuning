@@ -50,9 +50,9 @@ bool load(char const* dataPath) {
     infile.read((char*)&L0_PARAMETER3, 8);
     auto sz = L1_model_params(true)*L1_NUM_MODELS*8;
     L1_PARAMETERS = (char*) malloc(sz);
-    if (L1_PARAMETERS == NULL) return false;
+    if (L1_PARAMETERS == NULL) {std::cerr << "malloc failed." << std::endl;return false;}
     infile.read((char*)L1_PARAMETERS, sz);//402653184);
-    if (!infile.good()) return false;
+    if (!infile.good()) {std::cerr << "!infile.good()" << std::endl;return false;}
   }
   return true;
 }
