@@ -8,6 +8,7 @@ import random
 import matplotlib.pyplot as plt
 # %matplotlib inline
 import numpy as np
+import argparse
 
 import struct
 import math
@@ -366,27 +367,55 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
     set_empty_const(empty_num, linear_list, data2_x, num_module2)
     return linear_list, data2_x, data2_y, errs
 
-def main():
-    seed_all(7, True)
-    #x           = np.arange(1000, dtype=np.float) # np.random.normal(0, 1, 1000)
-    #y           = np.array([sum(x<inp) for inp in x]) #np.random.normal(0, 1, 1000)
-    path_query  = "./data/wiki_ts_200M_uint64_queries_10M_in_train"
-    path_index  = "./data/wiki_ts_200M_uint64"
-    x, y        = get_query_data(path_query)
-    max_epoch1  = 10000
-    max_epoch2  = 1000
-    num_module2 = 1000
-    num_data1   = len(x) #1000 # try 1k first
-    x, y        = x[:num_data1], y[:num_data1]
-    nxt_lower_bound = np.sum(get_index_data(path_index) <= max(x)) # can be regarded as a rigorous alternative to max(datay)+1
+def do_stretch(x, y):
+    assert np.all(x[:-1]<=x[1:]), 'data not sorted'
+    # do the so-call "stretching" augmentation:
+    # "given a key with position p before “stretching”, if its access frequency is
+    # f, then we need to (1) shift its position to be p+ (f−1)/2; (2) and shift all keys after it with f−1"
+        # the 2nd "shifting" part essentially equivallent to this (in my opinion, hope you can verify that)
+    y1 = np.copy(y)
+    for i in range(len(x)):
+        if i == 0 or x[i-1] < x[i]:
+            lb = i
+        y1[i] = lb
+    cnt_times = {}
+    # 1st "shifting"
+    for i in range(len(x)):
+        cnt_times[x[i]]=cnt_times.get(x[i], 0) + 1 # calc frequency
+    for i in range(len(x)):
+        y1[i] += float(cnt_times[x[i]]-1) / 2 # shift to middle so that has same distance between previous key's y and next key's y
+    return y1
+
+
+def sort_data(x, y):
+    idx = np.argsort(x)
+    return x[idx], y[idx]
+
+def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
+    num_module2, log_freq=-1, seed=7, deterministic_but_slow=True, stretch=False):
+    # x, y        = get_query_data(path_query)
+    # index_array = get_index_data(path_index)
+    num_data1   = len(x)
+    x, y        = sort_data(x, y)
     x, y        = x.astype(np.float64), y.astype(np.float64)
     cubic_list  = []
     datax       = x#x # 1st layer data
     datay       = y#y # 1st layer label
-    datay       = (datay - min(datay)) * 1. / (nxt_lower_bound - min(datay)) * num_module2 #scale
+    if stretch:
+        print('doing stretch')
+        y1 = do_stretch(x, y)
+        f = np.sum(y1 == max(y1))
+        nxt_lower_bound = len(y1) # can be regarded as a rigorous alternative to max(datay)+1
+        assert np.allclose(-(f-1.) / 2 + f + max(y1), nxt_lower_bound), nxt_lower_bound
+        datay = y1
+        datay = (datay - min(datay)) * 1. / (nxt_lower_bound - min(datay)) * num_module2 #scale
+    else:
+        nxt_lower_bound = np.sum(index_array <= max(x)) # can be regarded as a rigorous alternative to max(datay)+1
+        datay       = (datay - min(datay)) * 1. / (nxt_lower_bound - min(datay)) * num_module2 #scale
     device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     log_freq    = -1
-    out_path    = "./rmi_data/V1_3_PARAMETERS"
+    del index_array
+    seed_all(seed, deterministic_but_slow)
     print('init done')
 
     # train 1st layer
@@ -402,5 +431,31 @@ def main():
     wts = np.array(list(map(len, data2_x)))
     print("mean of max error of each layer 2 model=", sum(np.array(errs) * wts) / wts.sum())
     convert(cubic_list, linear_list, errs, out_path)
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--path-query', default="./data/wiki_ts_200M_uint64_queries_10M_in_train")
+    parser.add_argument('--path-index', default="./data/wiki_ts_200M_uint64")
+    parser.add_argument('--out-path', default="./rmi_data/V1_3_PARAMETERS")
+    parser.add_argument('--max-epoch1', type=int, default=10000)
+    parser.add_argument('--max-epoch2', type=int, default=1000)
+    parser.add_argument('--num-module2', type=int, default=1000)
+    parser.add_argument('--log-freq', type=int, default=-1)
+    parser.add_argument('--seed', type=int, default=7)
+    parser.add_argument('--stretch', action='store_true')
+    args = parser.parse_args()
+    path_query  = args.path_query
+    path_index  = args.path_index
+    out_path    = args.out_path
+    max_epoch1 = args.max_epoch1
+    max_epoch2 = args.max_epoch2
+    num_module2 = args.num_module2
+    log_freq = args.log_freq
+    seed = args.seed
+    stretch = args.stretch
+    x, y = get_query_data(path_query)
+    work(x, y, get_index_data(path_index), out_path, max_epoch1, max_epoch2, num_module2, 
+        log_freq=log_freq, seed=seed, stretch=stretch)
+
 if __name__ == "__main__":
     main()
