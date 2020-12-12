@@ -58,15 +58,17 @@ def convert(l1_model, l2_models, l2_error, out_path):
 
         # ba_l0 = bytearray()
         fout.write(L0_params.tobytes())
+        print(L0_params)
         # ba_l1 = bytearray(struct.pack("f", L1_params))
 
         for x,e in zip(l2_models,l2_error):
             # L1_params.append(x.a)
             # L1_params.append(x.b)
             # L1_params.append(e)
-            fout.write(struct.pack('<d', x.a))
-            fout.write(struct.pack('<d', x.b))
+            fout.write(struct.pack('<d', x.b.item()))
+            fout.write(struct.pack('<d', x.a.item()))
             fout.write(struct.pack('<Q', int(math.ceil(e))))
+            print(x.a.item(), x.b.item(), int(math.ceil(e)))
         # fout.write(L1_params.tobytes())
 
 class Linear(nn.Module):
