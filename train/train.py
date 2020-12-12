@@ -58,7 +58,6 @@ def convert(l1_model, l2_models, l2_error, out_path):
 
         # ba_l0 = bytearray()
         fout.write(L0_params.tobytes())
-        print(L0_params)
         # ba_l1 = bytearray(struct.pack("f", L1_params))
 
         for x,e in zip(l2_models,l2_error):
@@ -68,7 +67,6 @@ def convert(l1_model, l2_models, l2_error, out_path):
             fout.write(struct.pack('<d', x.b.item()))
             fout.write(struct.pack('<d', x.a.item()))
             fout.write(struct.pack('<Q', int(math.ceil(e))))
-            print(x.a.item(), x.b.item(), int(math.ceil(e)))
         # fout.write(L1_params.tobytes())
 
 class Linear(nn.Module):
@@ -380,7 +378,7 @@ def main():
     max_epoch1  = 1000
     # max_epoch2  = 100
     num_module2 = 1000
-    num_data1   = 1000 # try 1k first
+    num_data1   = len(x) #1000 # try 1k first
     x, y        = x[:num_data1], y[:num_data1]
     nxt_lower_bound = np.sum(get_index_data(path_index) <= max(x)) # can be regarded as a rigorous alternative to max(datay)+1
     x, y        = x.astype(np.float64), y.astype(np.float64)
