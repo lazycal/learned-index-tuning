@@ -146,16 +146,11 @@ def transform(a):
 # evaluate model
 def eval_model(model: nn.Module, x_val, y_val, criterion):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    batch_size = len(x_val)
-    loader = torch.utils.data.DataLoader(list(zip(x_val, y_val)), 
-                                         batch_size=batch_size, 
-                                         shuffle=True)
-    with torch.no_grad():
-        loss = 0
-        for data, target in loader:
-            data, target = data.to(device), target.to(device)
-            loss += criterion(model(data), target) * len(data)
-        return (loss/len(x_val)).item()
+    if isinstance(x_val, list): x_val = np.array(x_val)
+    if isinstance(y_val, list): y_val = np.array(y_val)
+    if isinstance(x_val, np.ndarray): x_val = torch.tensor(x_val).to(device)
+    if isinstance(y_val, np.ndarray): y_val = torch.tensor(y_val).to(device)
+    return criterion(model(x_val),y_val).item()
 
 def do_lr_decay(opt, epoch, lr_decay):
     lr = None
@@ -171,29 +166,32 @@ def train_model(model: nn.Module, x, y,
                 criterion=L2_loss, 
                 batch_size=None, 
                 wd=0,
-                lr_decay=((0,1e-1),),# ((0,1e-18), (40,1e-19), (70,1e-20)) #  lr=0.01 for epoch<4; lr=0.001 for epoch<7; ...
+                lr_decay=((0,1),),# ((0,1e-18), (40,1e-19), (70,1e-20)) #  lr=0.01 for epoch<4; lr=0.001 for epoch<7; ...
                 log_freq=10,
                ):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     x_ori, y_ori = x, y
     x, x_shift, x_scale = transform(x)
     y, y_shift, y_scale = transform(y)
+    x_gpu, y_gpu = torch.tensor(x).to(device), torch.tensor(y).to(device)
     
     # Note: Alternative is optim.Adam optimizer, which claims to tune the lr automatically 
     # (though usually worse than hand-tuned SGD)
-#     opt = optim.SGD(model.parameters(), lr=0.01, weight_decay=wd)
-    opt = optim.Adam(model.parameters(), lr=0.1, weight_decay=wd)
+    # opt = optim.SGD(model.parameters(), lr=0, weight_decay=wd)
+    opt = optim.Adam(model.parameters(), lr=0, weight_decay=wd)
     num_data = len(x)
-
+    assert batch_size is None # use full batch for now
     if batch_size is None: 
         batch_size = num_data # default to full batch SGD
     # create data loader to support mini-batch SGD
-    train_loader = torch.utils.data.DataLoader(list(zip(x, y)), 
-                                               batch_size=batch_size, 
-                                               shuffle=True)
+    # train_loader = torch.utils.data.DataLoader(torch.utils.data.TensorDataset(x_gpu, y_gpu),
+    #                                            batch_size=batch_size,
+    #                                            shuffle=True if batch_size < len(x) else False,
+    #                                            num_workers=8)
+    train_loader = [(x_gpu, y_gpu)]
     for j in range(max_epoch):
         if log_freq > 0 and j % log_freq == 0: 
-            print('Epoch', j, ': mean loss on training set is', eval_model(model, x, y, criterion))
+            print('Epoch', j, ': mean loss on training set is', eval_model(model, x_gpu, y_gpu, criterion))
         do_lr_decay(opt, j, lr_decay)
         for data, target in train_loader:
             # use GPU if available
@@ -202,7 +200,7 @@ def train_model(model: nn.Module, x, y,
             loss = criterion(model(data), target)
             loss.backward()
             opt.step()
-    err = eval_model(model, x, y, criterion)
+    err = eval_model(model, x_gpu, y_gpu, criterion)
     print('Final mean loss on training set is', err)
 
     # now transform model back: compute model' s.t. (model'(x_ori)-y_shift)/y_scale = model(x), 
@@ -375,8 +373,8 @@ def main():
     path_query  = "./data/wiki_ts_200M_uint64_queries_10M_in_train"
     path_index  = "./data/wiki_ts_200M_uint64"
     x, y        = get_query_data(path_query)
-    max_epoch1  = 1000
-    # max_epoch2  = 100
+    max_epoch1  = 10000
+    max_epoch2  = 1000
     num_module2 = 1000
     num_data1   = len(x) #1000 # try 1k first
     x, y        = x[:num_data1], y[:num_data1]
@@ -396,11 +394,11 @@ def main():
     print('num_data for each layer-1 model', len(datax))
     print(f'traing #{0}')
     cubic_model = Cubic().to(device)
-    train_model(cubic_model, datax, datay, max_epoch1, log_freq=log_freq)
+    train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
     cubic_list.append(cubic_model)
 
     linear_list, data2_x, data2_y, errs = train_L2(cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
-        log_freq=log_freq)
+        log_freq=log_freq, max_epoch2=max_epoch2)
     wts = np.array(list(map(len, data2_x)))
     print("mean of max error of each layer 2 model=", sum(np.array(errs) * wts) / wts.sum())
     convert(cubic_list, linear_list, errs, out_path)
