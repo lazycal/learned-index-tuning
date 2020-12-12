@@ -49,7 +49,7 @@ class RMI {
 
     uint64_t start = (guess < error ? 0 : guess - error);
     uint64_t stop = (guess + error >= data_size_ ? data_size_ : guess + error);
-
+    // std::cout << "key=" << lookup_key << ",guess=" << guess << ",error=" << error << ",start="<< start << ",stop=" << stop << std::endl;
     return (SearchBound){ start, stop };
   }
 

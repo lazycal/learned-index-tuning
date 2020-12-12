@@ -48,10 +48,18 @@ bool load(char const* dataPath) {
     infile.read((char*)&L0_PARAMETER1, 8);
     infile.read((char*)&L0_PARAMETER2, 8);
     infile.read((char*)&L0_PARAMETER3, 8);
+    std::cout << "L0_PARAMETER0=" << L0_PARAMETER0 << std::endl;
+    std::cout << "L0_PARAMETER1=" << L0_PARAMETER1 << std::endl;
+    std::cout << "L0_PARAMETER2=" << L0_PARAMETER2 << std::endl;
+    std::cout << "L0_PARAMETER3=" << L0_PARAMETER3 << std::endl;
     auto sz = L1_model_params(true)*L1_NUM_MODELS*8;
     L1_PARAMETERS = (char*) malloc(sz);
     if (L1_PARAMETERS == NULL) {std::cerr << "malloc failed." << std::endl;return false;}
     infile.read((char*)L1_PARAMETERS, sz);//402653184);
+    std::cout << "L1_PARAMETERS[:6]=";
+    for (int i = 0; i < 6; ++i) std::cout << (i % 3 == 2 ? 
+      reinterpret_cast<uint64_t*>(L1_PARAMETERS)[i] : reinterpret_cast<double*>(L1_PARAMETERS)[i]) << ",";
+    std::cout << std::endl;
     if (!infile.good()) {std::cerr << "!infile.good()" << std::endl;return false;}
   }
   return true;
@@ -80,8 +88,10 @@ uint64_t lookup(uint64_t key, size_t* err) {
   size_t modelIndex;
   double fpred;
   fpred = cubic(L0_PARAMETER0, L0_PARAMETER1, L0_PARAMETER2, L0_PARAMETER3, (double)key);
+  // std::cout << "fpred_L1=" << fpred << std::endl;
   modelIndex = std::min((size_t) std::max(0., fpred), L1_NUM_MODELS - 1);
   fpred = linear(*((double*) (L1_PARAMETERS + (modelIndex * 24) + 0)), *((double*) (L1_PARAMETERS + (modelIndex * 24) + 8)), (double)key);
+  // std::cout << "fpred_L2=" << fpred << std::endl;
   *err = *((uint64_t*) (L1_PARAMETERS + (modelIndex * 24) + 16));
 
   return FCLAMP(fpred, 200000000.0 - 1.0);
