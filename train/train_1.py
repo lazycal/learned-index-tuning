@@ -221,7 +221,7 @@ def train_model(model: nn.Module, x, y,
 
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
-    assert abs(err_ori / y_scale**4 - err) < 1e-5, (y_scale, err_ori / y_scale**4, err)
+    assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
     return train_loss, y_scale
 
 def seed_all(seed, deterministic_but_slow):
