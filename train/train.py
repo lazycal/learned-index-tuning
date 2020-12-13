@@ -195,8 +195,8 @@ def train_model(model: nn.Module, x, y,
     train_loader = [(x_gpu, y_gpu)]
     train_loss = []
     for j in range(max_epoch):
-        train_loss.append((j, eval_model(model, x_gpu, y_gpu, criterion)))
         if log_freq > 0 and j % log_freq == 0: 
+            train_loss.append((j, eval_model(model, x_gpu, y_gpu, criterion)))
             print('Epoch', j, ': mean loss on training set is', train_loss[-1][-1])
         do_lr_decay(opt, j, lr_decay)
         for data, target in train_loader:
@@ -423,7 +423,7 @@ def sort_data(x, y):
     return x[idx], y[idx]
 
 def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
-    num_module2, log_freq=-1, seed=7, deterministic_but_slow=True, stretch=False):
+    num_module2, log_freq=-1, seed=7, deterministic_but_slow=True, stretch=False, args={}):
     ti = timer.Timer()
     # x, y        = get_query_data(path_query)
     # index_array = get_index_data(path_index)
@@ -445,7 +445,6 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
         nxt_lower_bound = np.sum(index_array <= max(x)) # can be regarded as a rigorous alternative to max(datay)+1
         datay       = (datay - min(datay)) * 1. / (nxt_lower_bound - min(datay)) * num_module2 #scale
     device      = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    log_freq    = -1
     del index_array
     seed_all(seed, deterministic_but_slow)
     print('init done')
@@ -474,7 +473,7 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
         linear_list=linear_list, cubic_list=cubic_list, loss={
             'l1_train_loss': l1_train_loss, 'l1_y_scale': l1_y_scale, 
             'l2_train_loss': l2_train_loss, 'l2_y_scale': l2_y_scale},
-        ti=ti)
+        ti=ti, args=vars(args))
     print(ti)
 
 def main():
@@ -485,7 +484,7 @@ def main():
     parser.add_argument('--max-epoch1', type=int, default=10000)
     parser.add_argument('--max-epoch2', type=int, default=1000)
     parser.add_argument('--num-module2', type=int, default=1000)
-    parser.add_argument('--log-freq', type=int, default=-1)
+    parser.add_argument('--log-freq', type=int, default=100)
     parser.add_argument('--seed', type=int, default=7)
     parser.add_argument('--stretch', action='store_true')
     args = parser.parse_args()
@@ -500,7 +499,7 @@ def main():
     stretch = args.stretch
     x, y = get_query_data(path_query)
     work(x, y, get_index_data(path_index), out_path, max_epoch1, max_epoch2, num_module2, 
-        log_freq=log_freq, seed=seed, stretch=stretch)
+        log_freq=log_freq, seed=seed, stretch=stretch, args=args)
 
 if __name__ == "__main__":
     main()
