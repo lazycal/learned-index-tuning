@@ -142,7 +142,9 @@ def transform(a):
     a = np.array(a)
     scale = max(a) - min(a)
     if scale == 0: scale = 1
-    return (a - min(a)) / scale, min(a), scale
+    b = (a - min(a)) / scale
+    b = 2 * b - 1
+    return b, min(a) + scale * 0.5, scale * 0.5
 
 # evaluate model
 def eval_model(model: nn.Module, x_val, y_val, criterion):
