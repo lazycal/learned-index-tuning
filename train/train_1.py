@@ -171,7 +171,7 @@ def do_lr_decay(opt, epoch, lr_decay):
 
 def train_model(model: nn.Module, x, y, 
                 max_epoch=100, 
-                criterion=L1_loss, 
+                criterion=L2_loss, 
                 batch_size=None, 
                 wd=0,
                 lr_decay=((0,1),),# ((0,1e-18), (40,1e-19), (70,1e-20)) #  lr=0.01 for epoch<4; lr=0.001 for epoch<7; ...
@@ -353,7 +353,7 @@ def set_empty_const(empty_num, linear_list, data2_y, num_module2):
 
 
 def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
-    criterion_train=L2_loss):
+    criterion_train=L1_loss):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     linear_list = []
     errs = np.zeros(num_module2) # store max error
