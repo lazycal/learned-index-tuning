@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 # %matplotlib inline
 import numpy as np
 import argparse
+import timer
 
 import struct
 import math
@@ -192,9 +193,11 @@ def train_model(model: nn.Module, x, y,
     #                                            shuffle=True if batch_size < len(x) else False,
     #                                            num_workers=8)
     train_loader = [(x_gpu, y_gpu)]
+    train_loss = []
     for j in range(max_epoch):
+        train_loss.append((j, eval_model(model, x_gpu, y_gpu, criterion)))
         if log_freq > 0 and j % log_freq == 0: 
-            print('Epoch', j, ': mean loss on training set is', eval_model(model, x_gpu, y_gpu, criterion))
+            print('Epoch', j, ': mean loss on training set is', train_loss[-1][-1])
         do_lr_decay(opt, j, lr_decay)
         for data, target in train_loader:
             # use GPU if available
@@ -204,6 +207,7 @@ def train_model(model: nn.Module, x, y,
             loss.backward()
             opt.step()
     err = eval_model(model, x_gpu, y_gpu, criterion)
+    train_loss.append((max_epoch, err))
     print('Final mean loss on training set is', err)
 
     # now transform model back: compute model' s.t. (model'(x_ori)-y_shift)/y_scale = model(x), 
@@ -214,6 +218,7 @@ def train_model(model: nn.Module, x, y,
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
     assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
+    return train_loss, y_scale
 
 def seed_all(seed, deterministic_but_slow):
     random.seed(seed)
@@ -365,6 +370,7 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
     linear_list  = []
     empty_num    = []
     print('num_data for each layer-2 model', list(map(len, data2_x)))
+    train_loss, y_scale = [[] for _ in range(num_module2)], [[] for _ in range(num_module2)]
     for i in tqdm.tqdm(range(num_module2)):
         print(f'traing #{i}')
         linear_model = Linear().to(device)
@@ -372,7 +378,7 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
             empty_num.append(i)
             linear_list.append(linear_model)
             continue # skip
-        train_model(linear_model, data2_x[i], data2_y[i], max_epoch2, 
+        train_loss[i], y_scale[i] = train_model(linear_model, data2_x[i], data2_y[i], max_epoch2, 
             log_freq=log_freq, criterion=criterion_train)
         linear_list.append(linear_model)
         max_err = eval_model(linear_model, data2_x[i], data2_y[i], MaxLoss)
@@ -390,7 +396,7 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
             errs[i] = max(errs[i], errs[i + 1])
     print(errs)
     set_empty_const(empty_num, linear_list, data2_x, num_module2)
-    return linear_list, data2_x, data2_y, errs
+    return linear_list, data2_x, data2_y, errs, train_loss, y_scale
 
 def do_stretch(x, y):
     assert np.all(x[:-1]<=x[1:]), 'data not sorted'
@@ -418,6 +424,7 @@ def sort_data(x, y):
 
 def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     num_module2, log_freq=-1, seed=7, deterministic_but_slow=True, stretch=False):
+    ti = timer.Timer()
     # x, y        = get_query_data(path_query)
     # index_array = get_index_data(path_index)
     num_data1   = len(x)
@@ -446,20 +453,29 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     # train 1st layer
     cubic_list  = []
     print('num_data for each layer-1 model', len(datax))
+    ti('init')
     print(f'traing #{0}')
     cubic_model = Cubic().to(device)
-    train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
+    l1_train_loss, l1_y_scale = train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
+    ti('train_l1')
     cubic_list.append(cubic_model)
     err1 = eval_model(cubic_model, datax, datay, L2_loss)
 
-    linear_list, data2_x, data2_y, errs = train_L2(cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
+    ti('other')
+    linear_list, data2_x, data2_y, errs, l2_train_loss, l2_y_scale = train_L2(cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
         log_freq=log_freq, max_epoch2=max_epoch2)
+    ti('train_l2')
     wts = np.array(list(map(len, data2_x)))
     mean_max_err = np.sum(np.array(errs) * wts) / wts.sum()
     print("mean of max error of each layer 2 model=", mean_max_err)
     convert(cubic_list, linear_list, errs, out_path)
+    ti('other')
     np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
-        linear_list=linear_list, cubic_list=cubic_list)
+        linear_list=linear_list, cubic_list=cubic_list, loss={
+            'l1_train_loss': l1_train_loss, 'l1_y_scale': l1_y_scale, 
+            'l2_train_loss': l2_train_loss, 'l2_y_scale': l2_y_scale},
+        ti=ti)
+    print(ti)
 
 def main():
     parser = argparse.ArgumentParser()
