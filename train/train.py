@@ -224,7 +224,7 @@ def seed_all(seed, deterministic_but_slow):
         torch.backends.cudnn.benchmark = True
         torch.backends.cudnn.deterministic = False
 
-def set_empty_const(empty_num, linear_list, data2_x, num_module2):
+def set_empty_const(empty_num, linear_list, data2_y, num_module2):
     # Empty set
     right_index = []
     left_index  = []
@@ -290,14 +290,25 @@ def set_empty_const(empty_num, linear_list, data2_x, num_module2):
 
                 # Find the index of the first non-empty set at the left of the set whose index is empty_num(i)
                 for k in range(i+1,len(empty_num)):
+                    if k == len(empty_num)-1:
+                        if empty_num[k] != num_module2 - 1:
+                            right_index.append(empty_num[k] + 1)
+                            signal_right = 0
+                        break
                     if empty_num[k] != empty_num[k-1] + 1:
                         right_index.append(empty_num[k-1]+ 1)
+                        print("right = ", empty_num[k-1]+ 1)
                         signal_right = 0
                         break
 
                 # Find the index of the first non-empty set at the right of the set whose index is empty_num(i)
                 for l in range(i):
-                    if empty_num[i-1-l] != empty_num[i-l] - 1:
+                    if l == i-1:
+                        if empty_num[i-1-l] != 0:
+                            left_index.append(empty_num[i-1-l] - 1)
+                            signal_left = 0
+                        break
+                    if (empty_num[i-1-l] != empty_num[i-l] - 1):
                         left_index.append(empty_num[i-l] - 1)
                         signal_left = 0
                         break
