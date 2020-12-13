@@ -136,7 +136,7 @@ def L2_loss(output, target):
     return loss
     
 def L1_loss(output, target):
-    loss = torch.mean((output - target)**4)
+    loss = torch.mean((output - target)**10)
     return loss
 
 def MaxLoss(output, target):
