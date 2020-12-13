@@ -450,12 +450,16 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     cubic_model = Cubic().to(device)
     train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
     cubic_list.append(cubic_model)
+    err1 = eval_model(cubic_model, datax, datay, L2_loss)
 
     linear_list, data2_x, data2_y, errs = train_L2(cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
         log_freq=log_freq, max_epoch2=max_epoch2)
     wts = np.array(list(map(len, data2_x)))
-    print("mean of max error of each layer 2 model=", sum(np.array(errs) * wts) / wts.sum())
+    mean_max_err = np.sum(np.array(errs) * wts) / wts.sum()
+    print("mean of max error of each layer 2 model=", mean_max_err)
     convert(cubic_list, linear_list, errs, out_path)
+    np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
+        linear_list=linear_list, cubic_list=cubic_list)
 
 def main():
     parser = argparse.ArgumentParser()
