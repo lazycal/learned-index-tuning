@@ -135,6 +135,10 @@ def L2_loss(output, target):
     loss = torch.mean((output - target)**2)
     return loss
 
+def L1_loss(output, target):
+    loss = torch.mean((output - target)**4)
+    return loss
+
 def MaxLoss(output, target):
     return torch.max(torch.abs(output - target))
 
@@ -217,7 +221,7 @@ def train_model(model: nn.Module, x, y,
 
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
-    assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
+    #assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
     return train_loss, y_scale
 
 def seed_all(seed, deterministic_but_slow):
@@ -349,7 +353,7 @@ def set_empty_const(empty_num, linear_list, data2_y, num_module2):
 
 
 def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
-    criterion_train=L2_loss):
+    criterion_train=L1_loss):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     linear_list = []
     errs = np.zeros(num_module2) # store max error
