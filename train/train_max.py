@@ -1,3 +1,4 @@
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,9 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import timer
-from scipy.optimize import dual_annealing
-from torch_scatter import scatter
-import time
 
 import struct
 import math
@@ -170,7 +168,7 @@ def do_lr_decay(opt, epoch, lr_decay):
 
 def train_model(model: nn.Module, x, y, 
                 max_epoch=100, 
-                criterion=L2_loss, 
+                criterion=MaxLoss, 
                 batch_size=None, 
                 wd=0,
                 lr_decay=((0,1),),# ((0,1e-18), (40,1e-19), (70,1e-20)) #  lr=0.01 for epoch<4; lr=0.001 for epoch<7; ...
@@ -220,7 +218,7 @@ def train_model(model: nn.Module, x, y,
 
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
-    assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
+    #assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
     return train_loss, y_scale
 
 def seed_all(seed, deterministic_but_slow):
@@ -350,19 +348,9 @@ def set_empty_const(empty_num, linear_list, data2_y, num_module2):
 
             linear_list[empty_num[i]].b = nn.Parameter(torch.tensor(const[i], dtype=torch.float64, requires_grad=True))
 
-def set_empty_err(errs, num_module2, empty):
-    # compute max errors for empty models
-    # first use left model's error
-    for i in range(num_module2):
-        if empty[i] and i > 0: # model i is empty:
-            errs[i] = errs[i - 1]
-    # compute max(left model's error, right model's error)
-    for i in reversed(range(num_module2)):
-        if empty[i] and i < num_module2 - 1: # model i is empty:
-            errs[i] = max(errs[i], errs[i + 1])
 
 def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
-    criterion_train=L2_loss):
+    criterion_train=MaxLoss):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     linear_list = []
     errs = np.zeros(num_module2) # store max error
@@ -398,7 +386,15 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
         errs[i] = max_err
         print("max error={}".format(max_err))
 
-    set_empty_err(errs, num_module2, [len(data2_x[i]) == 0 for i in range(num_module2)])
+    # compute max errors for empty models
+    # first use left model's error
+    for i in range(num_module2):
+        if len(data2_x[i]) == 0 and i > 0: # model i is empty:
+            errs[i] = errs[i - 1]
+    # compute max(left model's error, right model's error)
+    for i in reversed(range(num_module2)):
+        if len(data2_x[i]) == 0 and i < num_module2 - 1: # model i is empty:
+            errs[i] = max(errs[i], errs[i + 1])
     print(errs)
     set_empty_const(empty_num, linear_list, data2_x, num_module2)
     return linear_list, data2_x, data2_y, errs, train_loss, y_scale
@@ -426,83 +422,6 @@ def do_stretch(x, y):
 def sort_data(x, y):
     idx = np.argsort(x)
     return x[idx], y[idx]
-
-class RMI(nn.Module):
-    def __init__(self, top_model, l2_list):
-        super(RMI, self).__init__()
-        self.set_l1(top_model)
-        self.set_l2(l2_list)
-    
-    def set_l1(self, top_model):
-        self.top_model = top_model
-
-    def set_l2(self, l2_list):
-        self.l2_list = l2_list
-        self.num_module2 = len(self.l2_list)
-        assert isinstance(l2_list[0], Linear)
-        self.l2_param_a = torch.stack([linear.a for linear in l2_list])
-        self.l2_param_b = torch.stack([linear.b for linear in l2_list])
-        # self.l2_param = torch.stack([l2_param_a, l2_param_b], dim=1)
-
-    def forward(self, x, model_index=None):
-        if model_index is None:
-            fpred = self.top_model(x).long()
-            model_index = torch.min(
-                self.num_module2 - 1 + torch.zeros_like(fpred, dtype=torch.int64), 
-                torch.max(torch.zeros_like(fpred, dtype=torch.int64), fpred))
-        l2_param_a_reorder = torch.gather(self.l2_param_a, 0, model_index)
-        l2_param_b_reorder = torch.gather(self.l2_param_b, 0, model_index)
-        return l2_param_a_reorder * x + l2_param_b_reorder
-
-def cost_func(inp, rmi: RMI, x_gpu, y_gpu):
-    rmi.top_model.a.data.fill_(inp[0])
-    rmi.top_model.b.data.fill_(inp[1])
-    rmi.top_model.c.data.fill_(inp[2])
-    rmi.top_model.d.data.fill_(inp[3])
-    with torch.no_grad():
-        fpred = rmi.top_model(x_gpu).long()
-        model_index = torch.min(
-            rmi.num_module2 - 1 + torch.zeros_like(fpred, dtype=torch.int64), 
-            torch.max(torch.zeros_like(fpred, dtype=torch.int64), fpred))
-        err_rmi = torch.abs(rmi(x_gpu, model_index) - y_gpu)
-        max_errs = scatter(err_rmi, model_index, dim=0, reduce='max')
-        wts = scatter(torch.ones_like(model_index, dtype=torch.float64), model_index, dim=0, reduce='sum')
-        mean_max_err = torch.sum(max_errs * wts) / torch.sum(wts)
-    return mean_max_err.item()
-
-def train_L1_da(linear_list, x_gpu, y_gpu, init_top_model, seed=7):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    top_model = Cubic().to(device)
-    rmi = RMI(top_model, linear_list)
-    init_param = np.array([
-        init_top_model.a.item(),
-        init_top_model.b.item(),
-        init_top_model.c.item(),
-        init_top_model.d.item()
-    ])
-    print('init f=', cost_func(init_param, rmi, x_gpu, y_gpu))
-    bounds = np.stack([init_param - np.abs(init_param)*0.1, init_param + np.abs(init_param)*0.1], axis=1)
-    print('bounds=', bounds)
-    ret = dual_annealing(cost_func, bounds, args=(rmi, x_gpu, y_gpu), seed=seed, maxiter=1000, x0=init_param)
-    top_model.a.data.fill_(ret.x[0])
-    top_model.b.data.fill_(ret.x[1])
-    top_model.c.data.fill_(ret.x[2])
-    top_model.d.data.fill_(ret.x[3])
-    print(ret)
-    return top_model, rmi
-
-def e2e(x, y, max_epoch1, max_epoch2, num_module2, cubic_model, linear_list, max_iter=100, log_freq=-1):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    x_gpu = torch.tensor(x).to(device)
-    y_gpu = torch.tensor(y).to(device)
-    for i in tqdm.tqdm(range(max_iter)):
-        st = time.time()
-        cubic_model, rmi = train_L1_da(linear_list, x_gpu, y_gpu, cubic_model)
-        print(f'train_L1_da time={time.time()-st}s')
-        linear_list, data2_x, data2_y, errs, l2_train_loss, l2_y_scale = train_L2(
-            cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
-            log_freq=log_freq, max_epoch2=max_epoch2)
-    return linear_list, data2_x, data2_y, errs, l2_train_loss, l2_y_scale
 
 def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     num_module2, log_freq=-1, seed=7, deterministic_but_slow=True, stretch=False, args={}):
@@ -537,7 +456,7 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     ti('init')
     print(f'traing #{0}')
     cubic_model = Cubic().to(device)
-    l1_train_loss, l1_y_scale = train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
+    l1_train_loss, l1_y_scale = train_model(cubic_model, datax, datay, max_epoch1, log_freq=1, criterion=L2_loss)
     ti('train_l1')
     cubic_list.append(cubic_model)
     err1 = eval_model(cubic_model, datax, datay, L2_loss)
@@ -546,38 +465,16 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     linear_list, data2_x, data2_y, errs, l2_train_loss, l2_y_scale = train_L2(cubic_model, x.astype(np.float64), y.astype(np.float64), num_module2,
         log_freq=log_freq, max_epoch2=max_epoch2)
     ti('train_l2')
-    e2e(x, y, max_epoch1, max_epoch2, num_module2, cubic_model, linear_list)
-    ti('e2e')
     wts = np.array(list(map(len, data2_x)))
     mean_max_err = np.sum(np.array(errs) * wts) / wts.sum()
-    mean_log2_max_err = np.sum(np.log2(np.maximum(1., np.array(errs))) * wts) / wts.sum()
     print("mean of max error of each layer 2 model=", mean_max_err)
-    print("mean of log2(max error of each layer 2 model)=", mean_log2_max_err)
     convert(cubic_list, linear_list, errs, out_path)
     ti('other')
-    np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, mean_log2_max_err=mean_log2_max_err,
-        wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
+    np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
         linear_list=linear_list, cubic_list=cubic_list, loss={
             'l1_train_loss': l1_train_loss, 'l1_y_scale': l1_y_scale, 
             'l2_train_loss': l2_train_loss, 'l2_y_scale': l2_y_scale},
         ti=ti, args=vars(args))
-    ti('other')
-    print(ti)
-    # test for correctness
-    # with torch.no_grad():
-    #     err_rmi = torch.abs(RMI(cubic_model, linear_list)(torch.tensor(x).to(device)) - torch.tensor(y).to(device))#.detach().cpu().numpy()
-    #     fpred = cubic_model(torch.tensor(x).to(device)).long()
-    #     model_index = torch.min(
-    #         num_module2 - 1 + torch.zeros_like(fpred, dtype=torch.int64), 
-    #         torch.max(torch.zeros_like(fpred, dtype=torch.int64), fpred))
-    #     errs2 = scatter(err_rmi, model_index, dim=0, reduce='max').detach().cpu().numpy()
-    # set_empty_err(errs2, num_module2, errs2<0)
-    # assert np.allclose(errs2, errs)
-    mean_max_err2 = cost_func(cubic_model.a, cubic_model.b, cubic_model.c, cubic_model.d, RMI(cubic_model, linear_list),
-        torch.tensor(x).to(device), torch.tensor(y).to(device))
-    assert np.allclose(mean_max_err, mean_max_err2), (mean_max_err, mean_max_err2)
-    print('pass')
-    ti('check')
     print(ti)
 
 def main():
