@@ -350,7 +350,7 @@ def set_empty_const(empty_num, linear_list, data2_y, num_module2):
 
 
 def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
-    criterion_train=Maxloss):
+    criterion_train=MaxLoss):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     linear_list = []
     errs = np.zeros(num_module2) # store max error
