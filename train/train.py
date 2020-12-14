@@ -466,10 +466,13 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     ti('train_l2')
     wts = np.array(list(map(len, data2_x)))
     mean_max_err = np.sum(np.array(errs) * wts) / wts.sum()
+    mean_log2_max_err = np.sum(np.log2(np.maximum(1., np.array(errs))) * wts) / wts.sum()
     print("mean of max error of each layer 2 model=", mean_max_err)
+    print("mean of log2(max error of each layer 2 model)=", mean_log2_max_err)
     convert(cubic_list, linear_list, errs, out_path)
     ti('other')
-    np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
+    np.savez(out_path+"_train_profile.npz", mean_max_err=mean_max_err, mean_log2_max_err=mean_log2_max_err,
+        wts=wts, L2_err_layer1=err1, max_errs_layer2=errs, 
         linear_list=linear_list, cubic_list=cubic_list, loss={
             'l1_train_loss': l1_train_loss, 'l1_y_scale': l1_y_scale, 
             'l2_train_loss': l2_train_loss, 'l2_y_scale': l2_y_scale},
