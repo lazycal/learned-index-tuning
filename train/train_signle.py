@@ -371,10 +371,16 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
     empty_num    = []
     print('num_data for each layer-2 model', list(map(len, data2_x)))
     train_loss, y_scale = [[] for _ in range(num_module2)], [[] for _ in range(num_module2)]
+    signal = 0
     for i in tqdm.tqdm(range(num_module2)):
         print(f'traing #{i}')
         linear_model = Linear().to(device)
+        if i == 0:
+            continue
+        if len(data2_x[i]) != 0 and i > 0:
+            signal = 1
         if len(data2_x[i]) == 0: 
+            continue
             empty_num.append(i)
             linear_list.append(linear_model)
             continue # skip
@@ -384,18 +390,9 @@ def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100,
         max_err = eval_model(linear_model, data2_x[i], data2_y[i], MaxLoss)
         errs[i] = max_err
         print("max error={}".format(max_err))
-
-    # compute max errors for empty models
-    # first use left model's error
-    for i in range(num_module2):
-        if len(data2_x[i]) == 0 and i > 0: # model i is empty:
-            errs[i] = errs[i - 1]
-    # compute max(left model's error, right model's error)
-    for i in reversed(range(num_module2)):
-        if len(data2_x[i]) == 0 and i < num_module2 - 1: # model i is empty:
-            errs[i] = max(errs[i], errs[i + 1])
-    print(errs)
-    set_empty_const(empty_num, linear_list, data2_x, num_module2)
+        if signal == 1:
+            break
+            
     return linear_list, data2_x, data2_y, errs, train_loss, y_scale
 
 def do_stretch(x, y):
