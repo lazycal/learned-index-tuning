@@ -171,7 +171,7 @@ def do_lr_decay(opt, epoch, lr_decay):
 
 def train_model(model: nn.Module, x, y, 
                 max_epoch=100, 
-                criterion=L2_loss, 
+                criterion=L1_loss, 
                 batch_size=None, 
                 wd=0,
                 lr_decay=((0,1),),# ((0,1e-18), (40,1e-19), (70,1e-20)) #  lr=0.01 for epoch<4; lr=0.001 for epoch<7; ...
@@ -221,7 +221,7 @@ def train_model(model: nn.Module, x, y,
 
     err_ori = eval_model(model, x_ori, y_ori, criterion)
     print('Final mean original loss on training set is', err_ori)
-    #assert abs(err_ori / y_scale**2 - err) < 1e-5, (y_scale, err_ori / y_scale**2, err)
+    #assert abs(err_ori / y_scale**4 - err) < 1e-5, (y_scale, err_ori / y_scale**4, err)
     return train_loss, y_scale
 
 def seed_all(seed, deterministic_but_slow):
@@ -459,7 +459,7 @@ def work(x, y, index_array, out_path, max_epoch1, max_epoch2,
     ti('init')
     print(f'traing #{0}')
     cubic_model = Cubic().to(device)
-    l1_train_loss, l1_y_scale = train_model(cubic_model, datax, datay, max_epoch1, log_freq=1)
+    l1_train_loss, l1_y_scale = train_model(cubic_model, datax, datay, max_epoch1, log_freq=1, criterion=L2_loss)
     ti('train_l1')
     cubic_list.append(cubic_model)
     err1 = eval_model(cubic_model, datax, datay, L2_loss)
