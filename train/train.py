@@ -345,7 +345,8 @@ def set_empty_const(empty_num, linear_list, data2_y, num_module2):
                 left_val    = sorted(data2_y[left_index[i]])[-1]
                 const.append(0.5 * (right_val.item() + left_val.item()))
 
-            linear_list[empty_num[i]].b = nn.Parameter(torch.tensor(const[i], dtype=torch.float64, requires_grad=True))
+            linear_list[empty_num[i]].a.data.fill_(0)
+            linear_list[empty_num[i]].b.data.fill_(const[i])
 
 
 def train_L2(top_model, x, y, num_module2, log_freq=-1, max_epoch2=100, 
