@@ -200,7 +200,7 @@ def train_model(model: nn.Module, x, y,
     train_loss = []
     for j in range(max_epoch):
         if log_freq > 0 and j % log_freq == 0: 
-            train_loss.append((j, eval_model(model, x_gpu, y_gpu, criterion)))
+            train_loss.append((j, eval_model(model, x_gpu, y_gpu, criterion), eval_model(model, x_gpu, y_gpu, MaxLoss))))
             print('Epoch', j, ': mean loss on training set is', train_loss[-1][-1])
         do_lr_decay(opt, j, lr_decay)
         for data, target in train_loader:
@@ -211,7 +211,8 @@ def train_model(model: nn.Module, x, y,
             loss.backward()
             opt.step()
     err = eval_model(model, x_gpu, y_gpu, criterion)
-    train_loss.append((max_epoch, err))
+    err_max = eval_model(model, x_gpu, y_gpu, MaxLoss)
+    train_loss.append((max_epoch, err, err_max))
     print('Final mean loss on training set is', err)
 
     # now transform model back: compute model' s.t. (model'(x_ori)-y_shift)/y_scale = model(x), 
